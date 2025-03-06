@@ -1,11 +1,13 @@
 from typing import Dict
 
-# API Provider mapping
+# API Provider mapping - Maps model provider names to their API key column names
 PROVIDER_MAP: Dict[str, str] = {
     "GROQ MODELS": "GROQ API ",  # Note the trailing space
     "COHERE": "COHERE  AI",
     "SambaNova": "Samba api key",
-    "GEMINI": "GEMINI API"
+    "GEMINI": "GEMINI API",
+    # New providers will be automatically detected from MODELS.csv
+    # Their API key column names should match the format: "{PROVIDER} API" or "{PROVIDER} api key"
 }
 
 # API Configuration

@@ -1,5 +1,6 @@
 from typing import AsyncGenerator, Dict, Any
 import importlib
+import os
 import logging
 from core.exceptions import ModelError, ProviderError
 from core.key_manager import key_manager
@@ -36,11 +37,27 @@ class TextGenerator:
             
             # Import provider module
             try:
+                # Convert provider name to valid module name
                 module_name = provider.lower().split()[0]  # Get first word in lowercase
                 logger.info(f"Importing module: models.{module_name}")
+                
+                # Check if module exists
+                backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                module_path = os.path.join(backend_dir, 'models', f'{module_name}.py')
+                
+                if not os.path.exists(module_path):
+                    raise ProviderError(f"Provider module not found at: {module_path}")
+                
                 provider_module = importlib.import_module(f"models.{module_name}")
+                
+                # Verify required functions exist
+                if not hasattr(provider_module, 'run_model_stream'):
+                    raise ProviderError(f"Provider module {module_name} missing required function: run_model_stream")
+                
             except ImportError as e:
-                raise ProviderError(f"Provider module not found: {str(e)}")
+                raise ProviderError(f"Failed to import provider module: {str(e)}")
+            except Exception as e:
+                raise ProviderError(f"Error loading provider module: {str(e)}")
             
             # Generate text stream
             async for chunk in provider_module.run_model_stream(api_key, model, prompt):
@@ -60,10 +77,8 @@ class TextGenerator:
         """
         try:
             models = key_manager.get_available_models()
-            return {
-                "models": models,
-                "total": len(models)
-            }
+            # Return just the models array directly since that's what frontend expects
+            return models
         except Exception as e:
             logger.error(f"Error getting available models: {str(e)}")
             raise ModelError(f"Failed to get available models: {str(e)}")

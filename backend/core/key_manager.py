@@ -12,30 +12,62 @@ class KeyManager:
         self.current_indices: Dict[str, int] = {}
         self.api_keys: Dict[str, List[str]] = {}
         self.models_map: Dict[str, str] = {}
+        self.provider_map = PROVIDER_MAP.copy()
+        self._load_models()  # Load models first to detect providers
         self._load_api_keys()
-        self._load_models()
+
+    def _detect_api_key_column(self, provider: str, columns: List[str]) -> str:
+        """
+        Detect the API key column name for a provider.
+        Tries different common formats like '{PROVIDER} API' or '{PROVIDER} api key'.
+        """
+        provider_variants = [
+            f"{provider} API",
+            f"{provider} api",
+            f"{provider} API KEY",
+            f"{provider} api key",
+            provider.upper() + " API",
+            provider.lower() + " api",
+        ]
+        
+        for variant in provider_variants:
+            for column in columns:
+                if column.strip().lower() == variant.lower():
+                    return column
+        
+        return None
 
     def _load_api_keys(self) -> None:
         """Load API keys from CSV file and initialize rotation indices."""
         try:
-            # Use absolute path to the backend directory
             backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             keys_path = os.path.join(backend_dir, 'apikeys.csv')
             keys_df = pd.read_csv(keys_path)
             
             logger.info("Available API key columns: %s", keys_df.columns.tolist())
             
-            for model_provider, api_provider in PROVIDER_MAP.items():
-                logger.info(f"Processing provider mapping: {model_provider} -> {api_provider}")
-                if api_provider in keys_df.columns:
+            # Process both predefined and auto-detected providers
+            for provider in set(self.models_map.values()):
+                if provider not in self.provider_map:
+                    # Try to detect API key column for new provider
+                    api_column = self._detect_api_key_column(provider, keys_df.columns)
+                    if api_column:
+                        self.provider_map[provider] = api_column
+                        logger.info(f"Auto-detected API column '{api_column}' for provider '{provider}'")
+                
+                api_provider = self.provider_map.get(provider)
+                if api_provider and api_provider in keys_df.columns:
                     valid_keys = [key for key in keys_df[api_provider].dropna()]
-                    logger.info(f"Found {len(valid_keys)} valid keys for {model_provider}")
+                    logger.info(f"Found {len(valid_keys)} valid keys for {provider}")
                     if valid_keys:
-                        self.api_keys[model_provider] = valid_keys
-                        self.current_indices[model_provider] = 0
+                        self.api_keys[provider] = valid_keys
+                        self.current_indices[provider] = 0
                 else:
-                    logger.warning(f"API provider column {api_provider} not found in CSV")
+                    logger.warning(f"No API keys found for provider: {provider}")
+                    if api_provider:
+                        logger.warning(f"Column '{api_provider}' not found in CSV")
                     logger.warning(f"Available columns: {keys_df.columns.tolist()}")
+                    
         except Exception as e:
             logger.error(f"Error loading API keys: {str(e)}")
             raise APIKeyError(f"Error loading API keys: {str(e)}")
@@ -43,7 +75,6 @@ class KeyManager:
     def _load_models(self) -> None:
         """Load models from CSV file and create model-to-provider mapping."""
         try:
-            # Use absolute path to the backend directory
             backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             models_path = os.path.join(backend_dir, 'MODELS.csv')
             models_df = pd.read_csv(models_path)
@@ -55,6 +86,9 @@ class KeyManager:
                 logger.info(f"Loading {len(models)} models for provider {provider}")
                 for model in models:
                     self.models_map[model.strip()] = provider
+                    
+            logger.info(f"Detected providers: {set(self.models_map.values())}")
+            
         except Exception as e:
             logger.error(f"Error loading models: {str(e)}")
             raise APIKeyError(f"Error loading models: {str(e)}")
@@ -70,12 +104,10 @@ class KeyManager:
         current_idx = self.current_indices[provider]
         total_keys = len(keys)
         
-        # Get current key and update index for next time
         key = keys[current_idx]
         next_idx = (current_idx + 1) % total_keys
         self.current_indices[provider] = next_idx
         
-        # Log key rotation info with more details
         key_preview = f"{key[:4]}...{key[-4:]}"
         logger.info(f"### API Key Rotation for {provider} ###")
         logger.info(f"Using key #{current_idx + 1}/{total_keys} ({key_preview})")

@@ -1,10 +1,13 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import json
 import logging
 import logging.config
+import os
 
 from core.config import API_HOST, API_PORT, CORS_SETTINGS, LOG_CONFIG
 from core.exceptions import APIError, handle_api_error
@@ -24,15 +27,25 @@ app.add_middleware(
     **CORS_SETTINGS
 )
 
+# Mount static files
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend')
+app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+
 class PromptRequest(BaseModel):
     model: str
     prompt: str
+
+@app.get("/")
+async def read_root():
+    """Serve the frontend HTML."""
+    return FileResponse(os.path.join(frontend_dir, 'index.html'))
 
 @app.get("/models")
 async def get_models():
     """Get list of all available models."""
     try:
-        return text_generator.get_available_models()
+        # Return models as a JSON array
+        return JSONResponse(content=text_generator.get_available_models())
     except APIError as e:
         error_response = handle_api_error(e)
         raise HTTPException(
