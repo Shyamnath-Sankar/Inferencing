@@ -1,16 +1,16 @@
 from openai import OpenAI
 
-def run_model(api_key: str, model: str, prompt: str) -> str:
+async def run_model_stream(api_key: str, model: str, prompt: str):
     """
-    Run the Gemini model with the provided API key and prompt.
+    Run the Gemini model with streaming response.
     
     Args:
         api_key: The API key to use for this request
         model: The model name to use
         prompt: The user's input prompt
         
-    Returns:
-        str: The generated response
+    Yields:
+        str: Chunks of the generated response
     """
     try:
         client = OpenAI(
@@ -27,12 +27,26 @@ def run_model(api_key: str, model: str, prompt: str) -> str:
             stream=True
         )
         
-        full_response = ""
         for chunk in response:
             if chunk.choices[0].delta.content is not None:
-                full_response += chunk.choices[0].delta.content
-        
-        return full_response
+                yield chunk.choices[0].delta.content
         
     except Exception as e:
         raise Exception(f"Error with Gemini API: {str(e)}")
+
+async def run_model(api_key: str, model: str, prompt: str) -> str:
+    """
+    Run the Gemini model with the provided API key and prompt (non-streaming).
+    
+    Args:
+        api_key: The API key to use for this request
+        model: The model name to use
+        prompt: The user's input prompt
+        
+    Returns:
+        str: The generated response
+    """
+    response = ""
+    async for chunk in run_model_stream(api_key, model, prompt):
+        response += chunk
+    return response

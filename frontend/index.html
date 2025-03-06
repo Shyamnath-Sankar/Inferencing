@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Model Interface</title>
+    <!-- Add marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -55,7 +57,6 @@
             margin-top: 20px;
             padding: 15px;
             border-radius: 4px;
-            white-space: pre-wrap;
             background-color: #f8f9fa;
             border: 1px solid #ddd;
         }
@@ -66,6 +67,42 @@
         .loading {
             display: inline-block;
             margin-left: 10px;
+        }
+        /* Markdown styling */
+        #response {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        }
+        #response pre {
+            background-color: #f6f8fa;
+            padding: 16px;
+            border-radius: 6px;
+            overflow: auto;
+        }
+        #response code {
+            font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 85%;
+            background-color: rgba(27, 31, 35, 0.05);
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+        }
+        #response pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        /* Cursor animation for streaming */
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background-color: #000;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+            vertical-align: middle;
         }
     </style>
 </head>
@@ -96,6 +133,11 @@
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
         const response = document.getElementById('response');
+        
+        let currentRequest = null;
+        let responseText = '';
+        let cursor = document.createElement('span');
+        cursor.className = 'cursor';
 
         // Load available models
         async function loadModels() {
@@ -130,13 +172,24 @@
                 return;
             }
 
+            // Reset UI
             error.style.display = 'none';
-            response.style.display = 'none';
+            responseText = '';
+            response.innerHTML = '';
+            response.style.display = 'block';
             loading.style.display = 'inline-block';
             submitBtn.disabled = true;
 
             try {
-                const res = await fetch(`${API_BASE_URL}/generate`, {
+                // Cancel any existing request
+                if (currentRequest) {
+                    currentRequest.abort();
+                }
+
+                currentRequest = new AbortController();
+                const signal = currentRequest.signal;
+
+                const reader = await fetch(`${API_BASE_URL}/generate`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -144,21 +197,56 @@
                     body: JSON.stringify({
                         model: model,
                         prompt: promptText
-                    })
+                    }),
+                    signal
+                }).then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.body.getReader();
                 });
 
-                const data = await res.json();
+                const decoder = new TextDecoder();
                 
-                if (!res.ok) {
-                    throw new Error(data.detail || 'An error occurred');
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
+                        if (!line.startsWith('data: ')) continue;
+                        
+                        const data = line.slice(5);
+                        if (data === '[DONE]') {
+                            response.innerHTML = marked.parse(responseText);
+                            break;
+                        }
+
+                        try {
+                            const parsed = JSON.parse(data);
+                            if (parsed.error) {
+                                throw new Error(parsed.error);
+                            }
+                            if (parsed.content) {
+                                responseText += parsed.content;
+                                response.innerHTML = marked.parse(responseText);
+                                response.appendChild(cursor);
+                                response.scrollTop = response.scrollHeight;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing SSE data:', e);
+                        }
+                    }
                 }
 
-                response.textContent = data.response;
-                response.style.display = 'block';
             } catch (err) {
                 error.textContent = err.message;
                 error.style.display = 'block';
             } finally {
+                currentRequest = null;
                 loading.style.display = 'none';
                 submitBtn.disabled = false;
             }

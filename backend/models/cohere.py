@@ -1,16 +1,16 @@
 import cohere
 
-def run_model(api_key: str, model: str, prompt: str) -> str:
+async def run_model_stream(api_key: str, model: str, prompt: str):
     """
-    Run the Cohere model with the provided API key and prompt.
+    Run the Cohere model with streaming response.
     
     Args:
         api_key: The API key to use for this request
         model: The model name to use
         prompt: The user's input prompt
         
-    Returns:
-        str: The generated response
+    Yields:
+        str: Chunks of the generated response
     """
     try:
         # Map friendly model names to Cohere's actual model names
@@ -28,12 +28,26 @@ def run_model(api_key: str, model: str, prompt: str) -> str:
             messages=[{"role": "user", "content": prompt}]
         )
         
-        full_response = ""
         for event in response:
             if event.type == "content-delta":
-                full_response += event.delta.message.content.text
-        
-        return full_response
+                yield event.delta.message.content.text
         
     except Exception as e:
         raise Exception(f"Error with Cohere API: {str(e)}")
+
+async def run_model(api_key: str, model: str, prompt: str) -> str:
+    """
+    Run the Cohere model with the provided API key and prompt (non-streaming).
+    
+    Args:
+        api_key: The API key to use for this request
+        model: The model name to use
+        prompt: The user's input prompt
+        
+    Returns:
+        str: The generated response
+    """
+    response = ""
+    async for chunk in run_model_stream(api_key, model, prompt):
+        response += chunk
+    return response

@@ -1,16 +1,16 @@
-import requests
+import openai
 
-def run_model(api_key: str, model: str, prompt: str) -> str:
+async def run_model_stream(api_key: str, model: str, prompt: str):
     """
-    Run the SambaNova model with the provided API key and prompt.
+    Run the SambaNova model with streaming response.
     
     Args:
         api_key: The API key to use for this request
         model: The model name to use
         prompt: The user's input prompt
         
-    Returns:
-        str: The generated response
+    Yields:
+        str: Chunks of the generated response
     """
     try:
         # Map friendly model names to SambaNova's actual model names
@@ -25,36 +25,46 @@ def run_model(api_key: str, model: str, prompt: str) -> str:
             "Llama 3.3 70B": "llama-3-3-70b",
             "Llama Guard 3 8B": "llama-guard-3-8b",
             "Qwen 2.5 72B": "qwen-2-5-72b",
-            "Qwen 2.5 Coder 32B": "Qwen2.5-Coder-32B-Instruct"  # Updated to exact model name
+            "Qwen 2.5 Coder 32B": "Qwen2.5-Coder-32B-Instruct"
         }
         
         samba_model = model_map.get(model, model)
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.sambanova.ai/v1"
+        )
         
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": samba_model,
-            "messages": [
+        response = client.chat.completions.create(
+            model=samba_model,
+            messages=[
                 {"role": "system", "content": "You are a helpful assistant"},
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7,
-            "top_p": 0.95
-        }
-        
-        response = requests.post(
-            "https://api.sambanova.ai/v1/chat/completions",
-            headers=headers,
-            json=data
+            temperature=0.7,
+            top_p=0.95,
+            stream=True  # Enable streaming
         )
         
-        if response.status_code != 200:
-            raise Exception(f"Error code: {response.status_code} - {response.json()}")
-            
-        return response.json()["choices"][0]["message"]["content"]
+        for chunk in response:
+            if chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
         
     except Exception as e:
         raise Exception(f"Error with SambaNova API: {str(e)}")
+
+async def run_model(api_key: str, model: str, prompt: str) -> str:
+    """
+    Run the SambaNova model with the provided API key and prompt (non-streaming).
+    
+    Args:
+        api_key: The API key to use for this request
+        model: The model name to use
+        prompt: The user's input prompt
+        
+    Returns:
+        str: The generated response
+    """
+    response = ""
+    async for chunk in run_model_stream(api_key, model, prompt):
+        response += chunk
+    return response

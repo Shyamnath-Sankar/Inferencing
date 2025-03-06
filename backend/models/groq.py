@@ -1,16 +1,16 @@
 import openai
 
-def run_model(api_key: str, model: str, prompt: str) -> str:
+async def run_model_stream(api_key: str, model: str, prompt: str):
     """
-    Run the Groq model with the provided API key and prompt.
+    Run the Groq model with streaming response.
     
     Args:
         api_key: The API key to use for this request
-        model: The model name to use (from GROQ MODELS column in MODELS.csv)
+        model: The model name to use
         prompt: The user's input prompt
         
-    Returns:
-        str: The generated response
+    Yields:
+        str: Chunks of the generated response
     """
     try:
         # Map friendly model names to Groq's actual model names
@@ -31,13 +31,12 @@ def run_model(api_key: str, model: str, prompt: str) -> str:
         }
 
         groq_model = model_map.get(model, model)
-        
         client = openai.OpenAI(
             base_url="https://api.groq.com/openai/v1",
             api_key=api_key
         )
         
-        completion = client.chat.completions.create(
+        response = client.chat.completions.create(
             model=groq_model,
             messages=[
                 {
@@ -46,18 +45,31 @@ def run_model(api_key: str, model: str, prompt: str) -> str:
                 }
             ],
             temperature=0.6,
-            max_tokens=4096,  # Changed from max_completion_tokens
+            max_tokens=4096,
             top_p=0.95,
-            stream=True,
-            stop=None
+            stream=True
         )
 
-        response = ""
-        for chunk in completion:
+        for chunk in response:
             if chunk.choices[0].delta.content is not None:
-                response += chunk.choices[0].delta.content
-        
-        return response
+                yield chunk.choices[0].delta.content
         
     except Exception as e:
         raise Exception(f"Error with Groq API: {str(e)}")
+
+async def run_model(api_key: str, model: str, prompt: str) -> str:
+    """
+    Run the Groq model with the provided API key and prompt (non-streaming).
+    
+    Args:
+        api_key: The API key to use for this request
+        model: The model name to use
+        prompt: The user's input prompt
+        
+    Returns:
+        str: The generated response
+    """
+    response = ""
+    async for chunk in run_model_stream(api_key, model, prompt):
+        response += chunk
+    return response
