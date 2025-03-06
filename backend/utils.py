@@ -68,16 +68,19 @@ class KeyRotator:
 
         keys = self.api_keys[provider]
         current_idx = self.current_indices[provider]
+        total_keys = len(keys)
         
         # Get current key and update index for next time
         key = keys[current_idx]
-        next_idx = (current_idx + 1) % len(keys)
+        next_idx = (current_idx + 1) % total_keys
         self.current_indices[provider] = next_idx
         
-        # Log key rotation info (showing only first/last 4 chars for security)
+        # Log key rotation info with more details
         key_preview = f"{key[:4]}...{key[-4:]}"
-        logger.info(f"Provider {provider}: Using key {current_idx + 1}/{len(keys)} ({key_preview})")
-        logger.info(f"Next key will be at index {next_idx + 1}/{len(keys)}")
+        logger.info(f"### API Key Rotation for {provider} ###")
+        logger.info(f"Using key #{current_idx + 1}/{total_keys} ({key_preview})")
+        logger.info(f"Next request will use key #{next_idx + 1}/{total_keys}")
+        logger.info(f"#################################")
         
         return key
 
