@@ -3,7 +3,7 @@ import openai
 
 client = openai.OpenAI(
     base_url="https://api.groq.com/openai/v1",
-    api_key="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"
+    api_key="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"
 )       
 chat_completion = client.chat.completions.create(
     messages=[
