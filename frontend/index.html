@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Model Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 150px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #cccccc;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Model Interface</h1>
+        <div class="form-group">
+            <label for="modelSelect">Select Model:</label>
+            <select id="modelSelect">
+                <option value="">Loading models...</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="prompt">Enter Prompt:</label>
+            <textarea id="prompt" placeholder="Type your prompt here..."></textarea>
+        </div>
+        <button id="submitBtn" disabled>Generate Response</button>
+        <span id="loading" class="loading" style="display: none;">Processing...</span>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+        const modelSelect = document.getElementById('modelSelect');
+        const promptInput = document.getElementById('prompt');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const response = document.getElementById('response');
+
+        // Load available models
+        async function loadModels() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/models`);
+                const models = await res.json();
+                
+                modelSelect.innerHTML = '<option value="">Select a model</option>' +
+                    models.map(m => `<option value="${m.model}">${m.model} (${m.provider})</option>`).join('');
+                
+                submitBtn.disabled = false;
+            } catch (err) {
+                error.textContent = 'Error loading models: ' + err.message;
+                error.style.display = 'block';
+            }
+        }
+
+        // Handle form submission
+        async function handleSubmit() {
+            const model = modelSelect.value;
+            const promptText = promptInput.value.trim();
+
+            if (!model) {
+                error.textContent = 'Please select a model';
+                error.style.display = 'block';
+                return;
+            }
+
+            if (!promptText) {
+                error.textContent = 'Please enter a prompt';
+                error.style.display = 'block';
+                return;
+            }
+
+            error.style.display = 'none';
+            response.style.display = 'none';
+            loading.style.display = 'inline-block';
+            submitBtn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        prompt: promptText
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (!res.ok) {
+                    throw new Error(data.detail || 'An error occurred');
+                }
+
+                response.textContent = data.response;
+                response.style.display = 'block';
+            } catch (err) {
+                error.textContent = err.message;
+                error.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        }
+
+        // Event listeners
+        submitBtn.addEventListener('click', handleSubmit);
+        
+        // Load models when page loads
+        loadModels();
+    </script>
+</body>
+</html>
