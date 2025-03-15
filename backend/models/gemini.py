@@ -1,4 +1,6 @@
-from openai import OpenAI
+import google.generativeai as genai
+import asyncio
+from typing import AsyncGenerator
 
 async def run_model_stream(api_key: str, model: str, prompt: str):
     """
@@ -13,23 +15,27 @@ async def run_model_stream(api_key: str, model: str, prompt: str):
         str: Chunks of the generated response
     """
     try:
-        client = OpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        # Configure the Gemini API
+        genai.configure(api_key=api_key)
+        
+        # Initialize the model with name from MODELS.csv
+        model_instance = genai.GenerativeModel(model)
+        
+        # Start the streaming response using async executor
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: model_instance.generate_content(
+                prompt,
+                stream=True
+            )
         )
         
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            stream=True
-        )
-        
+        # Process chunks with async handling
         for chunk in response:
-            if chunk.choices[0].delta.content is not None:
-                yield chunk.choices[0].delta.content
+            if chunk.text:
+                # Use asyncio.sleep to prevent blocking
+                await asyncio.sleep(0)
+                yield chunk.text
         
     except Exception as e:
         raise Exception(f"Error with Gemini API: {str(e)}")

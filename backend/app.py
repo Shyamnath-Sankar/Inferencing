@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,10 +21,14 @@ app = FastAPI(title="AI Text Generation API",
              description="API for text generation using multiple AI providers",
              version="1.0.0")
 
-# Enable CORS
+# Enable CORS with specific headers for SSE
 app.add_middleware(
     CORSMiddleware,
-    **CORS_SETTINGS
+    allow_origins=["*"],  # Update this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Type", "Cache-Control"]
 )
 
 # Mount static files
@@ -60,6 +64,7 @@ async def generate_stream(model: str, prompt: str):
     """Stream generator for text generation."""
     try:
         async for chunk in text_generator.generate_stream(model, prompt):
+            # Add extra newline to ensure proper event separation
             yield f"data: {json.dumps({'content': chunk})}\n\n"
     except APIError as e:
         error_response = handle_api_error(e)
@@ -70,15 +75,38 @@ async def generate_stream(model: str, prompt: str):
     finally:
         yield "data: [DONE]\n\n"
 
+@app.get("/generate")
 @app.post("/generate")
-async def generate_response(request: PromptRequest):
-    """Generate response using selected model."""
+async def generate_response(request: Request):
+    """Generate response using selected model (supports both GET and POST)."""
     try:
-        logger.info(f"Received request for model: {request.model}")
+        # Handle both GET and POST methods
+        if request.method == "GET":
+            params = dict(request.query_params)
+            model = params.get("model")
+            prompt = params.get("prompt")
+        else:
+            body = await request.json()
+            model = body.get("model")
+            prompt = body.get("prompt")
+
+        if not model or not prompt:
+            raise HTTPException(status_code=400, detail="Missing model or prompt parameter")
+
+        logger.info(f"Received {request.method} request for model: {model}")
+        
+        headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable buffering for nginx
+        }
+        
         return StreamingResponse(
-            generate_stream(request.model, request.prompt),
-            media_type="text/event-stream"
+            generate_stream(model, prompt),
+            media_type="text/event-stream",
+            headers=headers
         )
+        
     except APIError as e:
         error_response = handle_api_error(e)
         raise HTTPException(

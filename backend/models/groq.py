@@ -1,4 +1,5 @@
-import openai
+from openai import AsyncOpenAI
+import httpx
 
 async def run_model_stream(api_key: str, model: str, prompt: str):
     """
@@ -13,12 +14,14 @@ async def run_model_stream(api_key: str, model: str, prompt: str):
         str: Chunks of the generated response
     """
     try:
-        client = openai.OpenAI(
+        # Initialize AsyncOpenAI client with specific configuration
+        client = AsyncOpenAI(
+            api_key=api_key,
             base_url="https://api.groq.com/openai/v1",
-            api_key=api_key
+            http_client=httpx.AsyncClient(verify=True)  # Async client
         )
         
-        completion = client.chat.completions.create(
+        completion = await client.chat.completions.create(
             messages=[
                 {
                     "role": "user",
@@ -29,7 +32,7 @@ async def run_model_stream(api_key: str, model: str, prompt: str):
             stream=True
         )
 
-        for chunk in completion:
+        async for chunk in completion:
             if chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
         
@@ -49,12 +52,14 @@ async def run_model(api_key: str, model: str, prompt: str) -> str:
         str: The generated response
     """
     try:
-        client = openai.OpenAI(
+        # Initialize AsyncOpenAI client with specific configuration
+        client = AsyncOpenAI(
+            api_key=api_key,
             base_url="https://api.groq.com/openai/v1",
-            api_key=api_key
+            http_client=httpx.AsyncClient(verify=True)  # Async client
         )
         
-        chat_completion = client.chat.completions.create(
+        chat_completion = await client.chat.completions.create(
             messages=[
                 {
                     "role": "user",

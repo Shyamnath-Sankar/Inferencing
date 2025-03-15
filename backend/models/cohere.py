@@ -1,4 +1,6 @@
 import cohere
+import asyncio
+from typing import AsyncGenerator
 
 async def run_model_stream(api_key: str, model: str, prompt: str):
     """
@@ -13,24 +15,26 @@ async def run_model_stream(api_key: str, model: str, prompt: str):
         str: Chunks of the generated response
     """
     try:
-        # Map friendly model names to Cohere's actual model names
-        model_map = {
-            "Command R": "command",
-            "Command R7B": "command-r",
-            "Command R+": "command-light"
-        }
+        client = cohere.Client(api_key=api_key)
         
-        cohere_model = model_map.get(model, model)
-        client = cohere.ClientV2(api_key=api_key)
-        
-        response = client.chat_stream(
-            model=cohere_model,
-            messages=[{"role": "user", "content": prompt}]
+        # Create chat message with streaming
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.chat(
+                chat_history=[],
+                message=prompt,
+                model=model,  # Use model name directly from MODELS.csv
+                stream=True,
+                temperature=0.7
+            )
         )
         
+        # Process each chunk
         for event in response:
-            if event.type == "content-delta":
-                yield event.delta.message.content.text
+            if hasattr(event, 'text') and event.text:
+                # Use asyncio.sleep to prevent blocking
+                await asyncio.sleep(0)
+                yield event.text
         
     except Exception as e:
         raise Exception(f"Error with Cohere API: {str(e)}")
